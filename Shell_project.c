@@ -1,11 +1,18 @@
 /**
  UNIX Shell Project
  **/
+ /**
+ * Created by Pablo Sanchez Trujillo on 04/05/2017.
+ */
 
 #include "job_control.h"   // remember to compile with module job_control.c
 #include <string.h>
+#include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
 
 #define MAX_LINE 256 /* 256 chars per line, per command, should be enough. */
+#define	MORADO	"\x1b[35;1;1m"
 
 // -----------------------------------------------------------------------
 //                            MAIN
@@ -19,7 +26,6 @@
   Add a part of code in the controller that lets us control the
 */
 job* list;
-
 void manejador(){
     int status;
     int info;
@@ -80,7 +86,7 @@ int main(void)
     {
         ignore_terminal_signals();
 
-        printf("COMMAND->");
+        printf("user@user-ubuntu-trusty-64:~$");
         fflush(stdout);
         get_command(inputBuffer, MAX_LINE, args, &background);  /* get next command */
 
@@ -115,12 +121,34 @@ int main(void)
               set_terminal(item->pgid);
 	            killpg(item->pgid, SIGCONT);
               pid_wait = waitpid(item->pgid, &status, WUNTRACED); //esperamos a la señal de terminación.
+              //Add SUSPENDED
+              status_res = analyze_status(status, &info);
+              if(status_res == SUSPENDED){
+                item->state = STOPPED;
+              }
+              if(status_res == SIGNALED || status_res == EXITED){
+                printf("\nDeleting process pid: %d, Command: %s, %s, Info: %d\n",item->pgid,item->command,status_strings[status_res],info);
+                delete_job(list,item);
+                free_job(item);
+              }
+              set_terminal(getpid()); //Returns the shell to the parent
             }else{
               job * item = get_item_bypos(list, 1); //Gets the first element in the list
               item->state = FOREGROUND; //Changes its state to foreground
               set_terminal(item->pgid); //Gives the process the control over the terminal
-	      	    killpg(item->pgid,SIGCONT);
+	      	    killpg(item->pgid,SIGCONT);//Kills the proces group and gives a signal to continue the process
               pid_wait = waitpid(item->pgid, &status, WUNTRACED); //esperamos a la señal de terminación.
+              //Add SUSPENDED
+              status_res = analyze_status(status, &info);
+              if(status_res == SUSPENDED){
+                item->state = STOPPED;
+              }
+              if(status_res == SIGNALED || status_res == EXITED){
+                printf("\nDeleting process pid: %d, Command: %s, %s, Info: %d\n",item->pgid,item->command,status_strings[status_res],info);
+                delete_job(list,item);
+                free_job(item);
+              }
+              set_terminal(getpid()); //Returns the shell to the parent
             }
             continue;
 
@@ -132,10 +160,28 @@ int main(void)
             job* item = get_item_bypos(list, num); //Creates an item with the one stored in the list in pos num
             item->state=BACKGROUND; //Changes the state of the process to background
             killpg(item->pgid, SIGCONT); //Kills the process group associated to the processs and sends the signal SIGCONT
-          }else{ //fg without arguments
+            // status_res = analyze_status(status, &info);
+            // if(status_res == SUSPENDED){
+            //   item->state = STOPPED;
+            // }
+            // if(status_res == SIGNALED || status_res == EXITED){
+            //   printf("\nDeleting process pid: %d, Command: %s, %s, Info: %d\n",item->pgid,item->command,status_strings[status_res],info);
+            //   delete_job(list,item);
+            //   free_job(item);
+            // }
+          }else{ //bg without arguments
             job * item = get_item_bypos(list, 1); //Gets the first element of the list
             item->state = BACKGROUND; //Changes its state to bg
-	      	  killpg(item->pgid,SIGCONT);
+	      	  killpg(item->pgid,SIGCONT); //Kills the proces group and gives a signal to continue the process
+            // status_res = analyze_status(status, &info);
+            // if(status_res == SUSPENDED){
+            //   item->state = STOPPED;
+            // }
+            // if(status_res == SIGNALED || status_res == EXITED){
+            //   printf("\nDeleting process pid: %d, Command: %s, %s, Info: %d\n",item->pgid,item->command,status_strings[status_res],info);
+            //   delete_job(list,item);
+            //   free_job(item);
+            // }
           }
           continue;
         }else{
